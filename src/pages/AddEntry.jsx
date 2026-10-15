@@ -126,10 +126,28 @@ export default function AddEntry() {
     };
   }, [currency, date]);
 
+  // Investments: your own transfer rate, remembered from the last entry with this broker + currency.
+  // Each entry stores its own fx_rate, so changing it here never touches earlier entries.
+  const savedRate = useMemo(() => {
+    if (type !== 'invest' || currency === 'MYR') return null;
+    const b = broker.trim().toLowerCase();
+    const same = api.investments
+      .filter((i) => i.currency === currency && Number(i.fx_rate) > 0)
+      .sort((a, z) => (a.date + a.created_at < z.date + z.created_at ? 1 : -1));
+    return same.find((i) => (i.broker || '').toLowerCase() === b) || same[0] || null;
+  }, [type, currency, broker, api.investments]);
+  const [investRate, setInvestRate] = useState('');
+  useEffect(() => {
+    if (type !== 'invest' || currency === 'MYR') return;
+    if (savedRate) setInvestRate(String(Number(savedRate.fx_rate)));
+    else if (rateState === 'ok') setInvestRate(rate.toFixed(4));
+  }, [type, currency, savedRate?.id, rateState, rate]);
+
   const origTotal = type === 'expense' ? items.reduce((s, i) => s + num(i.amount), 0) : num(amount);
-  const myrAuto = round2(origTotal * rate);
-  const myrTotal = currency === 'MYR' ? origTotal : myrOverride != null ? num(myrOverride) : myrAuto;
-  const effRate = origTotal ? myrTotal / origTotal : rate;
+  const useInvestRate = type === 'invest' && currency !== 'MYR';
+  const myrAuto = round2(origTotal * (useInvestRate ? num(investRate) : rate));
+  const myrTotal = currency === 'MYR' ? origTotal : !useInvestRate && myrOverride != null ? num(myrOverride) : myrAuto;
+  const effRate = useInvestRate ? num(investRate) : origTotal ? myrTotal / origTotal : rate;
 
   const categoryOpts = api.categories.filter((c) => !c.archived);
   const accountOpts = api.accounts.filter((a) => !a.archived);
@@ -177,7 +195,8 @@ export default function AddEntry() {
     setErr(null);
     try {
       if (origTotal <= 0) throw new Error('Enter an amount.');
-      if (currency !== 'MYR' && rateState !== 'ok' && myrOverride == null)
+      if (useInvestRate && !(num(investRate) > 0)) throw new Error('Enter your exchange rate.');
+      if (currency !== 'MYR' && !useInvestRate && rateState !== 'ok' && myrOverride == null)
         throw new Error('No exchange rate yet. Type the MYR amount yourself.');
       setBusy(true);
       if (type === 'expense' && canInstall && inst) {
@@ -351,7 +370,21 @@ export default function AddEntry() {
             />
           </div>
         )}
-        {currency !== 'MYR' && (
+        {useInvestRate && (
+          <div className="col" style={{ gap: 6 }}>
+            <div className="row" style={{ gap: 8 }}>
+              <label htmlFor="inv-rate" className="small muted" style={{ whiteSpace: 'nowrap' }}>1 {currency} = RM</label>
+              <input id="inv-rate" className="input" inputMode="decimal" value={investRate} onChange={(e) => setInvestRate(e.target.value)} style={{ height: 40 }} />
+            </div>
+            <span className="tiny muted">
+              {savedRate
+                ? `Your rate from ${prettyDate(savedRate.date)}${savedRate.broker ? ` (${savedRate.broker})` : ''}. Made a new transfer? Change it; earlier entries keep theirs.`
+                : `Use RM sent ÷ ${currency} received for your transfer. It’s remembered for next time.`}
+            </span>
+            {myrAuto > 0 && <span className="small">= {money(myrAuto)}</span>}
+          </div>
+        )}
+        {currency !== 'MYR' && !useInvestRate && (
           <div className="col" style={{ gap: 6 }}>
             <div className="row small">
               <span className="muted grow">
