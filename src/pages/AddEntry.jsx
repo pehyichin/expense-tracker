@@ -92,6 +92,18 @@ export default function AddEntry() {
 
   const isRefund = (editing && editing.type === 'refund') || (!!refundOf && !editing);
 
+  // Keep each item's selected category chip in view (it may sit far right in the scroll row)
+  const catKey = items.map((i) => i.category_id).join(',');
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => {
+      document.querySelectorAll('.chips.scroll .chip.on').forEach((el) => {
+        const c = el.parentElement;
+        c.scrollTo({ left: el.offsetLeft - c.clientWidth / 2 + el.clientWidth / 2, behavior: 'smooth' });
+      });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [catKey]);
+
   // Exchange rate for foreign currencies
   useEffect(() => {
     if (currency === 'MYR') {
@@ -359,12 +371,12 @@ export default function AddEntry() {
                     </button>
                   ))}
                 </div>
-                {items.length > 1 && (
-                  <div className="row" style={{ gap: 8 }}>
-                    <input className="input grow" placeholder="Item (optional)" aria-label="Item name" value={it.item_name} onChange={(e) => setItem(it.key, { item_name: e.target.value })} />
+                <div className="row" style={{ gap: 8 }}>
+                  <input className="input grow" placeholder="What was it? (optional)" aria-label="Item name" value={it.item_name} onChange={(e) => setItem(it.key, { item_name: e.target.value })} />
+                  {items.length > 1 && (
                     <input className="input" style={{ width: 110 }} inputMode="decimal" placeholder="0.00" aria-label="Item amount" value={it.amount} onChange={(e) => setItem(it.key, { amount: e.target.value })} />
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             ))}
             <button className="chip dashed" style={{ justifyContent: 'center', width: '100%' }} onClick={() => setItems([...items, blankItem()])}>

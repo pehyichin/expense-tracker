@@ -10,7 +10,9 @@ export function txView(t, byId) {
   const account = byId.accounts[t.account_id]?.name;
   const platform = byId.platforms[t.platform_id]?.name;
   let icon = cats[0]?.icon || 'receipt';
-  let title = merchant || t.note || 'Expense';
+  const itemNames = (t.items || []).map((i) => i.item_name).filter(Boolean);
+  let title = merchant || itemNames.join(', ') || t.note || cats[0]?.name || 'Expense';
+  if (merchant && itemNames.length) title = `${merchant} · ${itemNames.join(', ')}`;
   let meta = [cats.map((c) => c.name).join(' + ') || 'Uncategorised', account, platform].filter(Boolean).join(' · ');
   let amount = money(txSpend(t));
   if (t.type === 'refund') {
