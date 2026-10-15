@@ -6,7 +6,7 @@ import TxCard from '../components/TxCard.jsx';
 import BudgetArc from '../components/BudgetArc.jsx';
 import { addDays, addMonths, dayOfMonth, dowLong, dowShort, monthLong, monthStart, prettyDate, startOfWeek, todayStr } from '../lib/dates.js';
 import { budgetForDay, monthSummary, sumBetween } from '../lib/spend.js';
-import { nextDueDate } from '../lib/recurring.js';
+import { installmentStatus, nextDueDate } from '../lib/recurring.js';
 import { changeLabel, money } from '../lib/format.js';
 
 export default function Home() {
@@ -40,6 +40,12 @@ export default function Home() {
     .map((r) => ({ r, d: nextDueDate(r, addDays(today, 1)) }))
     .filter((x) => x.d)
     .sort((a, b2) => (a.d < b2.d ? -1 : 1))[0];
+
+  const instLeft = api.recurring_rules
+    .filter((r) => r.kind === 'installment')
+    .map((r) => installmentStatus(r, today))
+    .filter((s) => s.left > 0);
+  const instRemaining = instLeft.reduce((s, x) => s + x.remaining, 0);
 
   const shiftWeek = (n) => {
     const target = addDays(sel, 7 * n);
@@ -170,6 +176,12 @@ export default function Home() {
             <Icon name="repeat" size={16} />
             <span>Next: {next.r.name} · {next.r.variable_amount ? 'variable' : money(next.r.amount_myr, { cents: false })} · {prettyDate(next.d, today)}</span>
           </div>
+        )}
+        {instLeft.length > 0 && (
+          <Link to="/settings/recurring" className="row small" style={{ gap: 8, textDecoration: 'none' }}>
+            <Icon name="calendar-range" size={16} />
+            <span>Installments left: {money(instRemaining, { cents: false })} across {instLeft.length} {instLeft.length === 1 ? 'plan' : 'plans'}</span>
+          </Link>
         )}
       </div>
     </div>

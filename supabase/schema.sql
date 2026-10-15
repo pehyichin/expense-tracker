@@ -85,6 +85,10 @@ create table if not exists recurring_rules (
   variable_amount boolean not null default false,
   paused boolean not null default false,
   last_generated_date date,
+  -- installments are rules too: fixed count, equal slices, last slice absorbs rounding
+  kind text not null default 'recurring' check (kind in ('recurring','installment')),
+  total_myr numeric(12,2),
+  installment_count int,
   created_at timestamptz not null default now()
 );
 
@@ -108,6 +112,7 @@ create table if not exists transactions (
   note text,
   exclude_from_budget boolean not null default false,
   recurring_rule_id uuid references recurring_rules on delete set null,
+  installment_no int,                   -- 1..n when generated from an installment plan
   is_draft boolean not null default false,  -- variable recurring awaiting amount
   refund_of uuid references transactions on delete set null,
   created_at timestamptz not null default now()

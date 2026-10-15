@@ -1,6 +1,21 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { dueDates, pendingDates, committedForMonth, nextDueDate } from '../src/lib/recurring.js';
+import { dueDates, pendingDates, committedForMonth, nextDueDate, planInstallment, amountOn, installmentStatus } from '../src/lib/recurring.js';
+
+test('installments: equal slices, last absorbs the cents, ends on time', () => {
+  const p = planInstallment(100, 3, '2026-10-31');
+  assert.equal(p.amount, 33.33);
+  assert.equal(p.end, '2026-12-31');
+  const r = { kind: 'installment', frequency: 'monthly', day_of_month: p.day, start_date: '2026-10-31', end_date: p.end, amount_myr: p.amount, total_myr: 100, installment_count: 3 };
+  const dates = dueDates(r, '2026-01-01', '2027-12-31');
+  assert.deepEqual(dates, ['2026-10-31', '2026-11-30', '2026-12-31']);
+  const sum = dates.reduce((s, d) => s + amountOn(r, d), 0);
+  assert.equal(Math.round(sum * 100) / 100, 100);
+  assert.equal(amountOn(r, '2026-12-31'), 33.34);
+  assert.equal(committedForMonth([r], '2026-11-05'), 33.33);
+  assert.deepEqual(installmentStatus(r, '2026-11-30'), { paid: 2, count: 3, left: 1, remaining: 33.34 });
+  assert.deepEqual(installmentStatus(r, '2026-10-01'), { paid: 0, count: 3, left: 3, remaining: 100 });
+});
 import { budgetForDay, spendLines, sumBetween } from '../src/lib/spend.js';
 import { rangePreset } from '../src/lib/dates.js';
 

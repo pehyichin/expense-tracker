@@ -6,7 +6,7 @@ import { Sheet, Switch } from '../components/ui.jsx';
 import { supabase } from '../lib/supabase.js';
 import { money } from '../lib/format.js';
 import { addDays, prettyDate, todayStr } from '../lib/dates.js';
-import { nextDueDate } from '../lib/recurring.js';
+import { installmentStatus, nextDueDate } from '../lib/recurring.js';
 import { download, toCSV } from '../lib/csv.js';
 
 export default function Settings() {
@@ -210,7 +210,10 @@ function Recurring() {
   const { api } = useData();
   const [edit, setEdit] = useState(null);
   const today = todayStr();
+  const [plan, setPlan] = useState(null);
+  const plans = api.recurring_rules.filter((r) => r.kind === 'installment').map((r) => ({ r, s: installmentStatus(r, today), next: nextDueDate(r, addDays(today, 1)) }));
   const rows = api.recurring_rules
+    .filter((r) => r.kind !== 'installment')
     .map((r) => ({ r, next: nextDueDate(r, today) }))
     .sort((a, b) => (a.next || '9999') < (b.next || '9999') ? -1 : 1);
   return (
@@ -232,8 +235,63 @@ function Recurring() {
           <span className="num" style={{ fontWeight: 500 }}>{r.variable_amount ? 'Varies' : money(r.amount_myr)}</span>
         </button>
       ))}
+      {plans.length > 0 && (
+        <>
+          <span className="label" style={{ paddingLeft: 4, marginTop: 8 }}>Installments</span>
+          {plans.map(({ r, s, next }) => (
+            <button key={r.id} className="tx" onClick={() => setPlan(r)}>
+              <span className="icon-chip"><Icon name={api.byId.categories[r.category_id]?.icon || 'calendar-range'} /></span>
+              <span className="grow col" style={{ gap: 2 }}>
+                <span style={{ fontWeight: 500 }} className="ellipsis">{r.name}</span>
+                <span className="small muted">
+                  {s.paid} of {s.count} paid{s.left > 0 && next ? ` · next ${prettyDate(next, today)}` : s.left === 0 ? ' · done' : ''}
+                </span>
+              </span>
+              <span className="col" style={{ alignItems: 'flex-end', gap: 1 }}>
+                <span className="num" style={{ fontWeight: 500 }}>{money(r.amount_myr)}/mo</span>
+                <span className="tiny muted">{money(s.remaining)} left</span>
+              </span>
+            </button>
+          ))}
+        </>
+      )}
       {edit && <EditRule rule={edit} onClose={() => setEdit(null)} />}
+      {plan && <PlanSheet rule={plan} onClose={() => setPlan(null)} />}
     </div>
+  );
+}
+
+function PlanSheet({ rule, onClose }) {
+  const { api } = useData();
+  const today = todayStr();
+  const s = installmentStatus(rule, today);
+  return (
+    <Sheet title={rule.name} onClose={onClose}>
+      <div className="card">
+        <div className="between"><span className="muted">Total</span><span className="num">{money(rule.total_myr)}</span></div>
+        <div className="between"><span className="muted">Monthly</span><span className="num">{money(rule.amount_myr)} × {rule.installment_count}</span></div>
+        <div className="between"><span className="muted">Paid</span><span className="num">{s.paid} of {s.count}</span></div>
+        <div className="between"><span className="muted">Left</span><span className="num">{money(s.remaining)}</span></div>
+        <div className="between"><span className="muted">Runs</span><span>{prettyDate(rule.start_date, today)} – {prettyDate(rule.end_date, today)}</span></div>
+      </div>
+      <span className="small muted">Payments already logged stay in Activity. These only affect the ones still to come.</span>
+      {s.left > 0 && (
+        <button
+          className="btn secondary"
+          onClick={async () => {
+            await api.upsert('recurring_rules', { id: rule.id, end_date: today });
+            await api.saveTransaction({
+              tx: { type: 'expense', date: today, merchant_id: rule.merchant_id, platform_id: rule.platform_id, account_id: rule.account_id, currency: 'MYR', amount_original: s.remaining, fx_rate: 1, note: `${rule.name} · paid off early` },
+              items: [{ category_id: rule.category_id, item_name: rule.name, amount_myr: s.remaining }]
+            });
+            onClose();
+          }}
+        >
+          Paid it off early ({money(s.remaining)} today)
+        </button>
+      )}
+      <button className="btn danger" onClick={async () => { await api.remove('recurring_rules', rule.id); onClose(); }}>Delete plan</button>
+    </Sheet>
   );
 }
 

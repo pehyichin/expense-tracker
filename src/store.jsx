@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase, fetchAll } from './lib/supabase.js';
 import { DEFAULT_ACCOUNTS, DEFAULT_CATEGORIES, DEFAULT_PLATFORMS } from './lib/defaults.js';
-import { pendingDates } from './lib/recurring.js';
+import { amountOn, paymentNumber, pendingDates } from './lib/recurring.js';
 import { spendLines } from './lib/spend.js';
 import { todayStr } from './lib/dates.js';
 
@@ -57,6 +57,9 @@ async function generateRecurring(rules, today) {
     const dates = pendingDates(r, today);
     if (!dates.length) continue;
     for (const date of dates) {
+      const amount = amountOn(r, date);
+      const isInst = r.kind === 'installment';
+      const k = isInst ? paymentNumber(r, date) : null;
       const { data: tx, error } = await supabase
         .from('transactions')
         .insert({
@@ -65,11 +68,12 @@ async function generateRecurring(rules, today) {
           merchant_id: r.merchant_id,
           platform_id: r.platform_id,
           account_id: r.account_id,
-          amount_myr: r.amount_myr,
-          amount_original: r.amount_myr,
+          amount_myr: amount,
+          amount_original: amount,
           recurring_rule_id: r.id,
-          is_draft: r.variable_amount,
-          note: r.name
+          installment_no: k,
+          is_draft: !isInst && r.variable_amount,
+          note: isInst ? `${r.name} · installment ${k}/${r.installment_count}` : r.name
         })
         .select()
         .single();
@@ -78,7 +82,7 @@ async function generateRecurring(rules, today) {
         transaction_id: tx.id,
         category_id: r.category_id,
         item_name: r.name,
-        amount_myr: r.amount_myr
+        amount_myr: amount
       });
       made++;
     }

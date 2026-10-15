@@ -3,7 +3,8 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useData } from '../store.jsx';
 import Icon from '../components/Icon.jsx';
 import { Autocomplete, ChipPicker, Sheet, Switch } from '../components/ui.jsx';
-import { todayStr } from '../lib/dates.js';
+import { prettyDate, todayStr } from '../lib/dates.js';
+import { planInstallment } from '../lib/recurring.js';
 import { money, round2 } from '../lib/format.js';
 import { CURRENCIES, rateToMYR } from '../lib/fx.js';
 import { supabase } from '../lib/supabase.js';
@@ -57,6 +58,9 @@ export default function AddEntry() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [inst, setInst] = useState(false);
+  const [instCount, setInstCount] = useState('6');
+  const [instFirst, setInstFirst] = useState(todayStr());
 
   // Populate when editing an existing entry or logging a refund
   useEffect(() => {
@@ -176,6 +180,35 @@ export default function AddEntry() {
       if (currency !== 'MYR' && rateState !== 'ok' && myrOverride == null)
         throw new Error('No exchange rate yet. Type the MYR amount yourself.');
       setBusy(true);
+      if (type === 'expense' && canInstall && inst) {
+        const n = Math.round(num(instCount));
+        if (!(n >= 2 && n <= 60)) throw new Error('Installments: between 2 and 60 months.');
+        if (!items[0].category_id) throw new Error('Pick a category.');
+        const total = round2(myrTotal);
+        const plan = planInstallment(total, n, instFirst);
+        const merchant_id = await api.ensureByName('merchants', merchant);
+        const { error } = await supabase.from('recurring_rules').insert({
+          kind: 'installment',
+          name: items[0].item_name.trim() || merchant.trim() || 'Installment purchase',
+          amount_myr: plan.amount,
+          total_myr: total,
+          installment_count: n,
+          category_id: items[0].category_id,
+          merchant_id,
+          platform_id: platformId,
+          account_id: accountId,
+          frequency: 'monthly',
+          day_of_month: plan.day,
+          start_date: instFirst,
+          end_date: plan.end
+        });
+        if (error) throw error;
+        if (merchant_id)
+          await supabase.from('merchants').update({ last_category_id: items[0].category_id, last_platform_id: platformId, last_account_id: accountId }).eq('id', merchant_id);
+        await api.reload();
+        nav(-1);
+        return;
+      }
       if (type === 'expense') {
         if (items.some((i) => num(i.amount) > 0 && !i.category_id)) throw new Error('Pick a category for each item.');
         const kept = items.filter((i) => num(i.amount) > 0);
@@ -254,6 +287,10 @@ export default function AddEntry() {
       setBusy(false);
     }
   }
+
+  const canInstall = type === 'expense' && !editing && !isRefund && items.length === 1;
+  const instN = Math.round(num(instCount));
+  const instPlan = canInstall && inst && instN >= 2 && myrTotal > 0 ? planInstallment(round2(myrTotal), instN, instFirst) : null;
 
   const heading = editing ? (editing.is_draft ? 'Confirm amount' : isRefund ? 'Edit refund' : 'Edit entry') : isRefund ? 'Log a refund' : 'New entry';
 
@@ -475,7 +512,38 @@ export default function AddEntry() {
         <textarea id="note" rows={2} placeholder="Optional" value={note} onChange={(e) => setNote(e.target.value)} />
       </div>
 
-      {type === 'expense' && !isRefund && (
+      {canInstall && (
+        <div className="card">
+          <div className="between">
+            <div className="col" style={{ gap: 2 }}>
+              <span style={{ fontWeight: 500 }}>Pay in installments</span>
+              <span className="small muted">Logged as one slice a month, automatically.</span>
+            </div>
+            <Switch checked={inst} onChange={setInst} label="Pay in installments" />
+          </div>
+          {inst && (
+            <>
+              <div className="chips" role="group" aria-label="Number of months">
+                {['3', '6', '12', '24'].map((n) => (
+                  <button key={n} className={'chip sm' + (instCount === n ? ' on' : '')} aria-pressed={instCount === n} onClick={() => setInstCount(n)}>{n} months</button>
+                ))}
+                <input className="input" style={{ width: 90, height: 36 }} inputMode="numeric" aria-label="Custom number of months" value={['3', '6', '12', '24'].includes(instCount) ? '' : instCount} placeholder="Other" onChange={(e) => setInstCount(e.target.value)} />
+              </div>
+              <div className="field" style={{ background: 'var(--card-2)' }}>
+                <label htmlFor="inst-first">First payment</label>
+                <input id="inst-first" type="date" value={instFirst} onChange={(e) => setInstFirst(e.target.value)} />
+              </div>
+              {instPlan && (
+                <div className="lime-note">
+                  {money(instPlan.amount)} × {instN}, monthly until {prettyDate(instPlan.end)}. Each slice counts against that month’s budget.
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {type === 'expense' && !isRefund && !(canInstall && inst) && (
         <div className="card" style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <div className="col" style={{ gap: 2 }}>
             <span style={{ fontWeight: 500 }}>Exclude from budget</span>
@@ -488,7 +556,7 @@ export default function AddEntry() {
       {err && <div className="error" role="alert">{err}</div>}
 
       <button className="btn" onClick={save} disabled={busy}>
-        {busy ? 'Saving…' : `Save${myrTotal > 0 ? ' · ' + money(myrTotal) : ''}`}
+        {busy ? 'Saving…' : instPlan ? `Save · ${money(instPlan.amount)}/month` : `Save${myrTotal > 0 ? ' · ' + money(myrTotal) : ''}`}
       </button>
 
       {editing && editing.type === 'expense' && !editing.is_draft && (

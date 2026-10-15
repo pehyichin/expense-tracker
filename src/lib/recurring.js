@@ -47,9 +47,41 @@ export function nextDueDate(rule, today) {
   return list[0] || null;
 }
 
-/** Sum of recurring commitments due in the month containing `date`. */
+/** Which payment number a due date is (1-based), counted from the rule's start. */
+export function paymentNumber(rule, date) {
+  return dueDates({ ...rule, paused: false, end_date: null }, rule.start_date, date).length;
+}
+
+/** Amount due on a date. Installments: equal slices, the last one absorbs rounding cents. */
+export function amountOn(rule, date) {
+  const base = Number(rule.amount_myr || 0);
+  if (rule.kind !== 'installment') return base;
+  const n = Number(rule.installment_count);
+  const k = paymentNumber(rule, date);
+  if (k >= n) return Math.round((Number(rule.total_myr) - base * (n - 1)) * 100) / 100;
+  return base;
+}
+
+/** Plan an installment: slice amount and the date of the final payment. */
+export function planInstallment(total, count, firstDate) {
+  const amount = Math.floor((total / count) * 100) / 100;
+  const day = Number(firstDate.slice(8, 10));
+  let end = firstDate;
+  for (let i = 1; i < count; i++) end = dueDateInMonth({ frequency: 'monthly', day_of_month: day }, addDays(monthEnd(end), 1));
+  return { amount, end, day };
+}
+
+/** Installment progress as of `today`. */
+export function installmentStatus(rule, today) {
+  const n = Number(rule.installment_count);
+  const paid = Math.min(n, today < rule.start_date ? 0 : paymentNumber(rule, today));
+  const paidAmount = paid >= n ? Number(rule.total_myr) : paid * Number(rule.amount_myr);
+  return { paid, count: n, left: n - paid, remaining: Math.max(0, Math.round((Number(rule.total_myr) - paidAmount) * 100) / 100) };
+}
+
+/** Sum of recurring commitments (incl. installments) due in the month containing `date`. */
 export function committedForMonth(rules, date) {
   const from = monthStart(date);
   const to = monthEnd(date);
-  return rules.reduce((sum, r) => sum + dueDates(r, from, to).length * Number(r.amount_myr || 0), 0);
+  return rules.reduce((sum, r) => sum + dueDates(r, from, to).reduce((s, d) => s + amountOn(r, d), 0), 0);
 }

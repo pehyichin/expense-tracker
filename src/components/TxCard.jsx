@@ -32,7 +32,9 @@ export function txView(t, byId) {
   }
   if (t.currency && t.currency !== 'MYR' && t.amount_original)
     meta += ` · ${t.currency} ${Number(t.amount_original).toLocaleString()}`;
-  if (t.recurring_rule_id) meta = '↻ ' + meta;
+  const rule = byId.recurring_rules[t.recurring_rule_id];
+  if (t.installment_no && rule) meta = `${t.installment_no}/${rule.installment_count} · ` + meta;
+  else if (t.recurring_rule_id) meta = '↻ ' + meta;
   if (t.is_draft) amount = 'Confirm';
   return { icon, title, meta, amount };
 }
