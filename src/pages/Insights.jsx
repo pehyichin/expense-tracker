@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useData } from '../store.jsx';
 import Icon from '../components/Icon.jsx';
 import { Sheet } from '../components/ui.jsx';
@@ -28,12 +28,45 @@ export default function Insights() {
   const { api } = useData();
   const nav = useNavigate();
   const today = todayStr();
-  const [preset, setPreset] = useState('mtd');
-  const [custom, setCustom] = useState({ from: monthStart(today), to: today });
+  // View state lives in the URL, so drilling into Activity and pressing back restores it.
+  const [params, setParams] = useSearchParams();
+  const preset = params.get('range') || 'mtd';
+  const custom = useMemo(
+    () => ({ from: params.get('from') || monthStart(today), to: params.get('to') || today }),
+    [params, today]
+  );
+  const tab = params.get('tab') || 'category';
+  const focus = params.get('focus') || null;
+  const span = params.get('span') === '12' ? 12 : 6;
+  const setView = (patch) => {
+    const p = new URLSearchParams(params);
+    for (const [k, v] of Object.entries(patch)) {
+      if (v == null || v === '') p.delete(k);
+      else p.set(k, String(v));
+    }
+    setParams(p, { replace: true });
+  };
+  const setPreset = (v) => setView({ range: v === 'mtd' ? null : v });
+  const setCustom = (c) => setView({ from: c.from, to: c.to });
+  const setTab = (v) => setView({ tab: v === 'category' ? null : v });
+  const setFocus = (v) => setView({ focus: v });
+  const setSpan = (v) => setView({ span: v === 6 ? null : v });
   const [pick, setPick] = useState(false);
-  const [tab, setTab] = useState('category');
-  const [focus, setFocus] = useState(null);
-  const [span, setSpan] = useState(6);
+
+  // Remember the view so the bottom-nav Insights button returns to it too
+  useEffect(() => {
+    try { sessionStorage.setItem('insights-search', params.toString()); } catch {}
+  }, [params]);
+
+  // Restore scroll position when coming back from a drill-down (saved in drill(), used once)
+  useEffect(() => {
+    let y = 0;
+    try {
+      y = Number(sessionStorage.getItem('insights-scroll')) || 0;
+      sessionStorage.removeItem('insights-scroll');
+    } catch {}
+    if (y) requestAnimationFrame(() => window.scrollTo(0, y));
+  }, []);
 
   const range = useMemo(() => rangePreset(preset, today, custom), [preset, today, custom]);
   const lines = api.lines;
@@ -76,7 +109,8 @@ export default function Insights() {
   const drill = (key) => {
     const p = new URLSearchParams({ from: range.from, to: range.to });
     if (key) p.set(tab, key);
-    nav(`/activity?${p}`);
+    try { sessionStorage.setItem('insights-scroll', String(window.scrollY)); } catch {}
+    nav(`/activity?${p}`, { state: { from: 'insights' } });
   };
 
   const iconFor = (key) => {

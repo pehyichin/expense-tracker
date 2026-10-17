@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useData } from '../store.jsx';
 import Icon from '../components/Icon.jsx';
 import TxCard, { txView } from '../components/TxCard.jsx';
@@ -20,6 +20,8 @@ const FILTER_KEYS = [
 export default function Activity() {
   const { api } = useData();
   const [params, setParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [type, setType] = useState(params.get('category') || params.get('merchant') || params.get('platform') || params.get('account') || params.get('tag') ? 'expense' : 'all');
   const [q, setQ] = useState('');
   const [showFilters, setShowFilters] = useState(false);
@@ -74,7 +76,12 @@ export default function Activity() {
   return (
     <div className="page">
       <div className="between">
-        <h1 className="title">Activity</h1>
+        <div className="row">
+          {location.state?.from === 'insights' && (
+            <button className="icon-btn" aria-label="Back to Insights" onClick={() => navigate(-1)}><Icon name="arrow-left" /></button>
+          )}
+          <h1 className="title">Activity</h1>
+        </div>
         <button className="icon-btn" aria-label="Filters" onClick={() => setShowFilters(true)}><Icon name="sliders-horizontal" /></button>
       </div>
 

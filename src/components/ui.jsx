@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import Icon from './Icon.jsx';
 
 export function BottomNav() {
   const cls = ({ isActive }) => (isActive ? 'active' : '');
+  useLocation(); // re-render on navigation so the remembered Insights view stays current
+  let insightsSearch = '';
+  try { insightsSearch = sessionStorage.getItem('insights-search') || ''; } catch {}
   return (
     <nav className="nav" aria-label="Main">
       <NavLink to="/" end className={cls} aria-label="Home"><Icon name="house" size={22} /></NavLink>
       <NavLink to="/activity" className={cls} aria-label="Activity"><Icon name="list" size={22} /></NavLink>
       <NavLink to="/add" className="add" aria-label="Add entry"><Icon name="plus" size={24} strokeWidth={2} /></NavLink>
-      <NavLink to="/insights" className={cls} aria-label="Insights"><Icon name="chart-no-axes-column" size={22} /></NavLink>
+      <NavLink to={insightsSearch ? `/insights?${insightsSearch}` : '/insights'} className={cls} aria-label="Insights"><Icon name="chart-no-axes-column" size={22} /></NavLink>
       <NavLink to="/investments" className={cls} aria-label="Investments"><Icon name="trending-up" size={22} /></NavLink>
     </nav>
   );
