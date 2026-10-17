@@ -171,21 +171,33 @@ export default function Home() {
           <span>{monthLong(today)} {api.budget ? 'budget' : 'spending'}</span>
           <span>{ms.daysLeft} days left</span>
         </div>
-        <div className="row" style={{ alignItems: 'baseline', gap: 6 }}>
-          <span style={{ fontSize: 28, fontWeight: 300 }} className="num">{money(ms.spent)}</span>
-          {api.budget > 0 && <span className="muted">of {money(api.budget, { cents: false })}</span>}
-        </div>
-        {api.budget > 0 && (
+        {api.budget > 0 ? (
           <>
-            <div style={{ position: 'relative', height: 10, borderRadius: 5, background: 'var(--bg)' }}>
-              <div style={{ position: 'absolute', inset: 0, width: `${Math.min(100, (ms.budgetSpent / api.budget) * 100)}%`, borderRadius: 5, background: 'var(--ink)' }} />
-              <div title="Pace" style={{ position: 'absolute', left: `${(ms.pace / api.budget) * 100}%`, top: -4, width: 2, height: 18, background: 'var(--terra)' }} />
+            <div className="row" style={{ alignItems: 'baseline', gap: 6 }}>
+              <span style={{ fontSize: 28, fontWeight: 300 }} className="num">{money(ms.used)}</span>
+              <span className="muted">of {money(api.budget, { cents: false })}</span>
+            </div>
+            <div
+              role="img"
+              aria-label={`Bills ${money(ms.committed)}, other spending ${money(ms.oneOff)}, of ${money(api.budget)}`}
+              style={{ position: 'relative', height: 10, borderRadius: 5, background: 'var(--bg)', display: 'flex', overflow: 'visible' }}
+            >
+              <div style={{ width: `${Math.min(100, (ms.committed / api.budget) * 100)}%`, background: 'var(--sage-dark)', borderRadius: '5px 0 0 5px' }} />
+              <div style={{ width: `${Math.max(0, Math.min(100 - (ms.committed / api.budget) * 100, (ms.oneOff / api.budget) * 100))}%`, background: 'var(--ink)', borderRadius: '0 5px 5px 0' }} />
+              <div title="Pace" style={{ position: 'absolute', left: `${Math.min(100, (ms.pace / api.budget) * 100)}%`, top: -4, width: 2, height: 18, background: 'var(--terra)' }} />
+            </div>
+            <div className="row small" style={{ gap: 14, flexWrap: 'wrap' }}>
+              <span className="row" style={{ gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: 'var(--sage-dark)' }} />Bills {money(ms.committed, { cents: false })}</span>
+              <span className="row" style={{ gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: 'var(--ink)' }} />Other {money(ms.oneOff, { cents: false })}</span>
+              <span className="muted">{ms.left >= 0 ? `${money(ms.left, { cents: false })} left` : `${money(-ms.left, { cents: false })} over`}</span>
             </div>
             <span className="small muted">
-              {ms.budgetSpent > ms.pace ? `${money(ms.budgetSpent - ms.pace, { cents: false })} ahead of pace` : `${money(ms.pace - ms.budgetSpent, { cents: false })} under pace`}
+              {ms.used > ms.pace ? `${money(ms.used - ms.pace, { cents: false })} ahead of pace` : `${money(ms.pace - ms.used, { cents: false })} under pace`}
               {prevSamePoint > 0 && ` · ${changeLabel(ms.spent, prevSamePoint, 'pct')} vs same point last month`}
             </span>
           </>
+        ) : (
+          <span style={{ fontSize: 28, fontWeight: 300 }} className="num">{money(ms.spent)}</span>
         )}
         {next && (
           <div className="row small" style={{ gap: 8, paddingTop: 10, borderTop: '1px solid var(--bg)' }}>

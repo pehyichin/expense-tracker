@@ -68,17 +68,52 @@ test('recurring, excluded and drafts stay out of the daily allowance', () => {
     exp('2026-10-01', 999, { is_draft: true }),
     exp('2026-10-01', 31)
   ]);
-  const b = budgetForDay({ lines, rules: [rule({ amount_myr: 1500 })], budget: 4600, date: '2026-10-02' });
+  const b = budgetForDay({ lines, rules: [rule({ id: 'r', amount_myr: 1500 })], budget: 4600, date: '2026-10-02' });
   // discretionary 3100, one-off spent 31 → (3100-31)/30
   assert.equal(b.allowance, (3100 - 31) / 30);
   assert.equal(sumBetween(lines, '2026-10-01', '2026-10-31'), 5531); // drafts excluded, everything else counts in totals
 });
 
-test('month pace counts bills on their due days, the rest evenly', () => {
-  // Oct: budget 3100, rent 1500 on the 1st, gym 90 on the 25th → discretionary 1510 ≈ 48.71/day
-  const rules = [rule({ amount_myr: 1500 }), rule({ amount_myr: 90, day_of_month: 25 })];
-  const ms = monthSummary({ lines: [], budget: 3100, date: '2026-10-17', rules });
-  assert.equal(Math.round(ms.pace * 100) / 100, Math.round((1500 + (1510 * 17) / 31) * 100) / 100);
+test('month view: all bills count from day 1, pace is about one-off spending only', () => {
+  // Oct: budget 3100. Rent 1500 on the 1st (logged), gym 90 on the 25th (not yet), installment 100 on the 28th.
+  const rules = [
+    rule({ id: 'rent', amount_myr: 1500 }),
+    rule({ amount_myr: 90, day_of_month: 25 }),
+    { kind: 'installment', frequency: 'monthly', day_of_month: 28, start_date: '2026-10-28', end_date: '2027-01-28', amount_myr: 100, total_myr: 400, installment_count: 4 }
+  ];
+  const lines = spendLines([
+    exp('2026-10-01', 1500, { recurring_rule_id: 'rent' }), // the logged rent must not be counted twice
+    exp('2026-10-05', 300),
+    exp('2026-10-06', 2000, { exclude_from_budget: true })
+  ]);
+  const ms = monthSummary({ lines, budget: 3100, date: '2026-10-17', rules });
+  assert.equal(ms.committed, 1690);
+  assert.equal(ms.oneOff, 300);
+  assert.equal(ms.used, 1990);
+  assert.equal(ms.left, 1110);
+  // discretionary 1410 spread evenly: pace = 1690 + 1410*17/31
+  assert.equal(Math.round(ms.pace * 100) / 100, Math.round((1690 + (1410 * 17) / 31) * 100) / 100);
+  // agrees with the daily allowance: same discretionary pool
+  const b = budgetForDay({ lines, rules, budget: 3100, date: '2026-10-17' });
+  assert.equal(b.discretionary, 1410);
+  assert.equal(b.remaining, 1410 - 300);
+  // a fresh month: bills already taken on the 1st, before anything is paid
+  const nov = monthSummary({ lines, budget: 3100, date: '2026-11-01', rules });
+  assert.equal(nov.used, 1690);
+  assert.equal(nov.oneOff, 0);
+});
+
+test('variable bills use the confirmed amount once logged, the estimate until then', () => {
+  const elec = rule({ id: 'e', amount_myr: 100, day_of_month: 10, variable_amount: true });
+  const before = monthSummary({ lines: [], budget: 1000, date: '2026-10-05', rules: [elec] });
+  assert.equal(before.committed, 100);
+  const lines = spendLines([exp('2026-10-10', 135, { recurring_rule_id: 'e' })]);
+  const after = monthSummary({ lines, budget: 1000, date: '2026-10-17', rules: [elec] });
+  assert.equal(after.committed, 135);
+  assert.equal(after.used, 135);
+  // an unconfirmed draft doesn't count twice or at zero
+  const draft = spendLines([exp('2026-10-10', 0, { recurring_rule_id: 'e', is_draft: true })]);
+  assert.equal(monthSummary({ lines: draft, budget: 1000, date: '2026-10-17', rules: [elec] }).committed, 100);
 });
 
 test('allowance never goes negative', () => {
