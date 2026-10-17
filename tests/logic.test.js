@@ -16,7 +16,7 @@ test('installments: equal slices, last absorbs the cents, ends on time', () => {
   assert.deepEqual(installmentStatus(r, '2026-11-30'), { paid: 2, count: 3, left: 1, remaining: 33.34 });
   assert.deepEqual(installmentStatus(r, '2026-10-01'), { paid: 0, count: 3, left: 3, remaining: 100 });
 });
-import { budgetForDay, spendLines, sumBetween } from '../src/lib/spend.js';
+import { budgetForDay, monthSummary, spendLines, sumBetween } from '../src/lib/spend.js';
 import { rangePreset } from '../src/lib/dates.js';
 
 const rule = (o) => ({ frequency: 'monthly', day_of_month: 1, start_date: '2026-01-01', amount_myr: 100, paused: false, ...o });
@@ -72,6 +72,13 @@ test('recurring, excluded and drafts stay out of the daily allowance', () => {
   // discretionary 3100, one-off spent 31 → (3100-31)/30
   assert.equal(b.allowance, (3100 - 31) / 30);
   assert.equal(sumBetween(lines, '2026-10-01', '2026-10-31'), 5531); // drafts excluded, everything else counts in totals
+});
+
+test('month pace counts bills on their due days, the rest evenly', () => {
+  // Oct: budget 3100, rent 1500 on the 1st, gym 90 on the 25th → discretionary 1510 ≈ 48.71/day
+  const rules = [rule({ amount_myr: 1500 }), rule({ amount_myr: 90, day_of_month: 25 })];
+  const ms = monthSummary({ lines: [], budget: 3100, date: '2026-10-17', rules });
+  assert.equal(Math.round(ms.pace * 100) / 100, Math.round((1500 + (1510 * 17) / 31) * 100) / 100);
 });
 
 test('allowance never goes negative', () => {

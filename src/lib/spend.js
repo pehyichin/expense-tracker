@@ -1,6 +1,10 @@
 // Pure spending maths: lines, totals, rolling budget. No React, no network — unit-tested.
 import { addDays, dayOfMonth, daysInMonth, monthStart } from './dates.js';
-import { committedForMonth } from './recurring.js';
+import { amountOn, committedForMonth, dueDates } from './recurring.js';
+
+function committedBetween(rules, from, to) {
+  return rules.reduce((s, r) => s + dueDates(r, from, to).reduce((t, d) => t + amountOn(r, d), 0), 0);
+}
 
 export const isSpend = (t) => (t.type === 'expense' || t.type === 'refund') && !t.is_draft;
 
@@ -64,12 +68,20 @@ export function budgetForDay({ lines, rules, budget, date, includeRecurring = fa
   return { committed, discretionary, spentBefore, daysLeft, remaining, allowance, daySpend, monthOver };
 }
 
-export function monthSummary({ lines, budget, date }) {
+/**
+ * Pace = bills already due by `date` (they land on fixed days, not evenly)
+ *      + the discretionary budget spread evenly across the month.
+ * So rent on the 1st doesn't make you "ahead of pace", and a bill due on the 25th
+ * doesn't make you look thrifty on the 17th.
+ */
+export function monthSummary({ lines, budget, date, rules = [] }) {
   const mStart = monthStart(date);
   const spent = sumBetween(lines, mStart, date);
   const budgetSpent = sumBetween(lines, mStart, date, (l) => !l.excluded);
   const dim = daysInMonth(Number(date.slice(0, 4)), Number(date.slice(5, 7)));
-  const pace = budget ? (budget * dayOfMonth(date)) / dim : null;
+  const committed = committedForMonth(rules, date);
+  const dueSoFar = committedBetween(rules, mStart, date);
+  const pace = budget ? dueSoFar + ((budget - committed) * dayOfMonth(date)) / dim : null;
   return { spent, budgetSpent, budget, pace, daysLeft: dim - dayOfMonth(date) };
 }
 

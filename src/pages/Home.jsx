@@ -9,6 +9,18 @@ import { budgetForDay, monthSummary, sumBetween } from '../lib/spend.js';
 import { installmentStatus, nextDueDate } from '../lib/recurring.js';
 import { changeLabel, money } from '../lib/format.js';
 
+/** Big number that always fits inside the arc: small "RM", digits shrink as they grow. */
+function ArcAmount({ value }) {
+  const digits = money(value).replace('RM', '');
+  const size = digits.length <= 5 ? 42 : digits.length <= 6 ? 38 : digits.length <= 7 ? 34 : digits.length <= 8 ? 30 : 26;
+  return (
+    <div className="num" style={{ display: 'flex', alignItems: 'baseline', gap: 3, maxWidth: 190 }}>
+      <span style={{ fontSize: 18, fontWeight: 400 }} className="muted">RM</span>
+      <span style={{ fontSize: size, fontWeight: 300, letterSpacing: -1, whiteSpace: 'nowrap' }}>{digits}</span>
+    </div>
+  );
+}
+
 export default function Home() {
   const { api } = useData();
   const today = todayStr();
@@ -32,7 +44,7 @@ export default function Home() {
   const dayTx = api.transactions.filter((t) => t.date === sel);
   const drafts = api.transactions.filter((t) => t.is_draft);
 
-  const ms = monthSummary({ lines: api.lines, budget: api.budget, date: today });
+  const ms = monthSummary({ lines: api.lines, budget: api.budget, date: today, rules: api.recurring_rules });
   const pm = addMonths(monthStart(today), -1);
   const prevSamePoint = sumBetween(api.lines, pm, addMonths(today, -1));
 
@@ -128,7 +140,11 @@ export default function Home() {
       </div>
 
       <BudgetArc spent={spentSel} allowance={b ? b.allowance : 0}>
-        <div className="big">{sel > today ? '—' : money(spentSel)}</div>
+        {sel > today ? (
+          <div className="big">—</div>
+        ) : (
+          <ArcAmount value={spentSel} />
+        )}
         <div className="small muted">{b && sel <= today ? `of ${money(b.allowance)} allowance` : sel > today ? 'Allowance set that morning' : 'spent'}</div>
         {!b && sel <= today ? (
           <Link to="/settings/budget" style={{ marginTop: 6, fontSize: 14, fontWeight: 500, padding: '6px 14px', borderRadius: 16, textDecoration: 'none', ...statusStyle }}>{status}</Link>

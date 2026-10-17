@@ -24,7 +24,7 @@ export default function BudgetArc({ spent, allowance, children }) {
         <line x1="240.1" y1="98" x2="267.8" y2="82" stroke="#111111" strokeWidth="2" />
         <circle cx="268.6" cy="81.5" r="6" fill="#EDF59A" stroke="#111111" strokeWidth="2" />
       </svg>
-      <div style={{ position: 'absolute', top: 66, left: 0, right: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+      <div style={{ position: 'absolute', top: 84, left: 0, right: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
         {children}
       </div>
     </div>
