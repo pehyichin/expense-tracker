@@ -6,7 +6,8 @@ import { Sheet, Switch } from '../components/ui.jsx';
 import { supabase } from '../lib/supabase.js';
 import { money } from '../lib/format.js';
 import { addDays, prettyDate, todayStr } from '../lib/dates.js';
-import { installmentStatus, nextDueDate } from '../lib/recurring.js';
+import { dueDates, installmentStatus, nextDueDate } from '../lib/recurring.js';
+import { missedDates } from '../store.jsx';
 import { download, toCSV } from '../lib/csv.js';
 
 export default function Settings() {
@@ -304,7 +305,12 @@ function EditRule({ rule, onClose }) {
     merchant: api.byId.merchants[rule.merchant_id]?.name || ''
   });
   const [err, setErr] = useState(null);
+  const [busy, setBusy] = useState(false);
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
+  const missed = rule.id ? missedDates(rule, api.transactions, todayStr()) : [];
+  const backfill = !rule.id && f.start_date && f.start_date <= todayStr()
+    ? dueDates({ frequency: f.frequency, day_of_month: Number(f.day_of_month) || 1, month_of_year: Number(f.month_of_year), start_date: f.start_date, end_date: f.end_date || null }, f.start_date, addDays(todayStr(), -1))
+    : [];
 
   async function save() {
     try {
@@ -326,11 +332,8 @@ function EditRule({ rule, onClose }) {
         end_date: f.end_date || null,
         paused: f.paused
       };
+      // A past start date on a new rule is deliberate: payments due since then get logged on save.
       if (rule.id) row.id = rule.id;
-      else {
-        // don't back-fill anything before today on a new rule
-        row.last_generated_date = row.start_date < todayStr() ? addDays(todayStr(), -1) : null;
-      }
       await api.upsert('recurring_rules', row);
       onClose();
     } catch (e) {
@@ -394,6 +397,21 @@ function EditRule({ rule, onClose }) {
         <div className="card" style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <span style={{ fontWeight: 500 }}>Paused</span>
           <Switch checked={f.paused} onChange={(v) => set('paused', v)} label="Paused" />
+        </div>
+      )}
+      {!rule.id && backfill.length > 0 && (
+        <div className="lime-note">
+          Saving will log {backfill.length === 1 ? 'the payment' : `${backfill.length} payments`} already due: {backfill.slice(0, 3).map((d) => prettyDate(d, todayStr())).join(', ')}{backfill.length > 3 ? '…' : ''}.
+        </div>
+      )}
+      {rule.id && missed.length > 0 && (
+        <div className="card" style={{ background: 'var(--lime)' }}>
+          <span className="small">
+            Not logged yet: {missed.slice(0, 3).map((d) => prettyDate(d, todayStr())).join(', ')}{missed.length > 3 ? ` and ${missed.length - 3} more` : ''}
+          </span>
+          <button className="btn" disabled={busy} onClick={async () => { setBusy(true); await api.logMissed(rule, missed); setBusy(false); onClose(); }}>
+            Log {missed.length === 1 ? 'it' : `all ${missed.length}`}
+          </button>
         </div>
       )}
       {err && <div className="error">{err}</div>}

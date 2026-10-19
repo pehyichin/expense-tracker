@@ -131,3 +131,11 @@ test('month-to-date compares with the same point last month', () => {
   const m = rangePreset('mtd', '2026-03-31');
   assert.equal(m.prev.to, '2026-02-28');
 });
+
+test('rule created on the 19th with start date the 18th: the 18th is due', () => {
+  const r = rule({ id: 'db', start_date: '2026-10-18', day_of_month: 18 });
+  assert.deepEqual(pendingDates(r, '2026-10-19'), ['2026-10-18']);
+  // the old behaviour stamped last_generated_date = yesterday, which skipped it
+  assert.deepEqual(pendingDates({ ...r, last_generated_date: '2026-10-18' }, '2026-10-19'), []);
+  assert.deepEqual(dueDates({ ...r, last_generated_date: '2026-10-18' }, r.start_date, '2026-10-18'), ['2026-10-18']);
+});

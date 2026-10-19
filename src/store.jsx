@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase, fetchAll } from './lib/supabase.js';
 import { DEFAULT_ACCOUNTS, DEFAULT_CATEGORIES, DEFAULT_PLATFORMS } from './lib/defaults.js';
-import { amountOn, paymentNumber, pendingDates } from './lib/recurring.js';
+import { amountOn, dueDates, paymentNumber, pendingDates } from './lib/recurring.js';
 import { spendLines } from './lib/spend.js';
 import { todayStr } from './lib/dates.js';
 
@@ -56,7 +56,16 @@ async function generateRecurring(rules, today) {
   for (const r of rules) {
     const dates = pendingDates(r, today);
     if (!dates.length) continue;
-    for (const date of dates) {
+    made += await insertRecurring(r, dates);
+    await supabase.from('recurring_rules').update({ last_generated_date: dates[dates.length - 1] }).eq('id', r.id);
+  }
+  return made;
+}
+
+/** Log one expense per due date for a rule. */
+async function insertRecurring(r, dates) {
+  let made = 0;
+  for (const date of dates) {
       const amount = amountOn(r, date);
       const isInst = r.kind === 'installment';
       const k = isInst ? paymentNumber(r, date) : null;
@@ -85,10 +94,15 @@ async function generateRecurring(rules, today) {
         amount_myr: amount
       });
       made++;
-    }
-    await supabase.from('recurring_rules').update({ last_generated_date: dates[dates.length - 1] }).eq('id', r.id);
   }
   return made;
+}
+
+/** Due dates of a rule up to today that have no logged entry (e.g. skipped when the rule was created). */
+export function missedDates(rule, transactions, today) {
+  const upTo = rule.last_generated_date && rule.last_generated_date < today ? rule.last_generated_date : today;
+  const logged = new Set(transactions.filter((t) => t.recurring_rule_id === rule.id).map((t) => t.date));
+  return dueDates(rule, rule.start_date, upTo).filter((d) => !logged.has(d));
 }
 
 export function DataProvider({ session, children }) {
@@ -177,6 +191,11 @@ export function DataProvider({ session, children }) {
       return txId;
     }
 
+    async function logMissed(rule, dates) {
+      await insertRecurring(rule, dates);
+      await reload();
+    }
+
     async function deleteTransaction(id) {
       const { error } = await supabase.from('transactions').delete().eq('id', id);
       if (error) throw error;
@@ -222,6 +241,7 @@ export function DataProvider({ session, children }) {
       ensureByName,
       saveTransaction,
       deleteTransaction,
+      logMissed,
       upsert,
       remove,
       saveSettings
