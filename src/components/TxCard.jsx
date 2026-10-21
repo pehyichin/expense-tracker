@@ -15,6 +15,8 @@ export function txView(t, byId) {
   if (merchant && itemNames.length) title = `${merchant} · ${itemNames.join(', ')}`;
   let meta = [cats.map((c) => c.name).join(' + ') || 'Uncategorised', account, platform].filter(Boolean).join(' · ');
   let amount = money(txSpend(t));
+  const refunded = (byId.refundsOf?.[t.id] || 0);
+  if (t.type === 'expense' && refunded > 0) meta = `Refunded ${money(refunded)} · ` + meta;
   if (t.type === 'refund') {
     icon = 'undo-2';
     title = `Refund · ${merchant || 'unknown'}`;

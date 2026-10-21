@@ -233,7 +233,11 @@ export function DataProvider({ session, children }) {
         merchants: index(data.merchants),
         tags: index(data.tags),
         income_sources: index(data.income_sources),
-        recurring_rules: index(data.recurring_rules)
+        recurring_rules: index(data.recurring_rules),
+        refundsOf: data.transactions.reduce((m, t) => {
+          if (t.type === 'refund' && t.refund_of) m[t.refund_of] = (m[t.refund_of] || 0) + Number(t.amount_myr);
+          return m;
+        }, {})
       },
       lines: spendLines(data.transactions),
       budget: Number(data.settings?.monthly_budget) || 0,

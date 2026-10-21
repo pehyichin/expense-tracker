@@ -95,6 +95,8 @@ export default function AddEntry() {
   }, [id, refundOf?.id]);
 
   const isRefund = (editing && editing.type === 'refund') || (!!refundOf && !editing);
+  const refunds = editing ? api.transactions.filter((t) => t.type === 'refund' && t.refund_of === editing.id) : [];
+  const refundedTotal = refunds.reduce((s, r) => s + Number(r.amount_myr), 0);
 
   // Keep each item's selected category chip in view (it may sit far right in the scroll row)
   const catKey = items.map((i) => i.category_id).join(',');
@@ -288,7 +290,8 @@ export default function AddEntry() {
         nav('/investments');
         return;
       }
-      nav(-1);
+      // A new refund is opened from the purchase's edit screen: skip back past it to where you came from
+      nav(isRefund && !editing ? -2 : -1);
     } catch (e) {
       setErr(e.message || String(e));
     } finally {
@@ -592,9 +595,24 @@ export default function AddEntry() {
         {busy ? 'Saving…' : instPlan ? `Save · ${money(instPlan.amount)}/month` : `Save${myrTotal > 0 ? ' · ' + money(myrTotal) : ''}`}
       </button>
 
-      {editing && editing.type === 'expense' && !editing.is_draft && (
+      {editing && editing.type === 'expense' && refunds.length > 0 && (
+        <div className="card">
+          <span className="label">Refunded</span>
+          {refunds.map((r) => (
+            <button key={r.id} className="between" style={{ border: 'none', background: 'transparent', padding: '4px 0', textAlign: 'left' }} onClick={() => nav(`/edit/${r.id}`)}>
+              <span>{prettyDate(r.date)}</span>
+              <span className="num">+{money(r.amount_myr)}</span>
+            </button>
+          ))}
+          <div className="between" style={{ paddingTop: 8, borderTop: '1px solid var(--bg)' }}>
+            <span className="muted">Net cost</span>
+            <span className="num" style={{ fontWeight: 500 }}>{money(editing.amount_myr - refundedTotal)}</span>
+          </div>
+        </div>
+      )}
+      {editing && editing.type === 'expense' && !editing.is_draft && refundedTotal < Number(editing.amount_myr) - 0.004 && (
         <button className="btn secondary" onClick={() => nav(`/add?refund=${editing.id}`)}>
-          <Icon name="undo-2" size={18} /> Log a refund for this
+          <Icon name="undo-2" size={18} /> {refunds.length ? 'Log another refund' : 'Log a refund for this'}
         </button>
       )}
       {editing && (
